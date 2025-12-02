@@ -62,11 +62,17 @@ def discover_esphome_players() -> List[Dict]:
 
 def main():
     """Main function"""
+    if not SUPERVISOR_TOKEN:
+        print("ERROR: SUPERVISOR_TOKEN not available", file=sys.stderr)
+        print(json.dumps([]))
+        sys.exit(0)
+    
     players = discover_esphome_players()
     
     if not players:
         print("No ESPHome media players found", file=sys.stderr)
-        sys.exit(1)
+        print(json.dumps([]))
+        sys.exit(0)
     
     print(f"Found {len(players)} ESPHome media player(s):")
     for player in players:
