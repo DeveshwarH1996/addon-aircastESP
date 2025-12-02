@@ -22,7 +22,7 @@ options:
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)?
   address: str?
-  latency_rtp: int
-  latency_http: int
-  drift: bool
-  esphome_enabled: bool
+  latency_rtp: int?
+  latency_http: int?
+  drift: bool?
+  esphome_enabled: bool?
