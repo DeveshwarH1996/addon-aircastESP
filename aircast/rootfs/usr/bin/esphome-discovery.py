@@ -24,6 +24,40 @@ def discover_esphome_players() -> List[Dict]:
     Discover ESPHome media players via Home Assistant API
     Returns list of media player entities
     """
+    def fetch_entity_registry_media_players() -> List[str]:
+        """Fetch media_player entities backed by the ESPHome integration."""
+        try:
+            response = requests.get(
+                f'{HA_API_URL}/config/entity_registry',
+                headers=get_headers(),
+                timeout=10,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if isinstance(payload, dict):
+                entries = payload.get('data') or payload.get('entries') or []
+            elif isinstance(payload, list):
+                entries = payload
+            else:
+                entries = []
+
+            esphome_entities = [
+                entry.get('entity_id')
+                for entry in entries
+                if isinstance(entry, dict)
+                and entry.get('entity_id', '').startswith('media_player.')
+                and entry.get('platform') == 'esphome'
+            ]
+
+            return esphome_entities
+        except requests.exceptions.RequestException as err:
+            print(f"Warning: Failed to query entity registry: {err}", file=sys.stderr)
+        except Exception as err:  # pragma: no cover - defensive
+            print(f"Warning: Unexpected error parsing entity registry: {err}", file=sys.stderr)
+        return []
+
+    esphome_registry_entities = set(fetch_entity_registry_media_players())
+
     try:
         # Get all states
         response = requests.get(
@@ -41,8 +75,15 @@ def discover_esphome_players() -> List[Dict]:
             attributes = entity.get('attributes', {})
             
             # Check if it's a media player from ESPHome
-            if (entity_id.startswith('media_player.') and
-                attributes.get('attribution') == 'ESPHome'):
+            if not entity_id.startswith('media_player.'):
+                continue
+
+            attribution = attributes.get('attribution')
+            if (
+                attribution == 'ESPHome'
+                or entity_id in esphome_registry_entities
+                or attributes.get('platform') == 'esphome'
+            ):
                 
                 esphome_players.append({
                     'entity_id': entity_id,
