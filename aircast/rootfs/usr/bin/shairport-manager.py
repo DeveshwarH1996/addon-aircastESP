@@ -188,39 +188,54 @@ def load_config():
 
 def main():
     """Main function"""
-    print("Starting ESPHome AirPlay Bridge Manager...")
+    try:
+        print("=" * 60)
+        print("Starting ESPHome AirPlay Bridge Manager...")
+        print("=" * 60)
+        
+        # Check for SUPERVISOR_TOKEN
+        if not SUPERVISOR_TOKEN:
+            print("ERROR: SUPERVISOR_TOKEN not found in environment")
+            print("This should be automatically provided by Home Assistant")
+            sys.exit(1)
+        
+        print(f"✓ SUPERVISOR_TOKEN found")
+        
+        config = load_config()
+        print(f"✓ Configuration loaded: {config}")
+        
+        # Check if ESPHome support is enabled
+        if not config.get('esphome_enabled', False):
+            print("ESPHome support is disabled in configuration")
+            sys.exit(0)
+        
+        print(f"✓ ESPHome support is enabled")
+        
+        # Discover ESPHome players
+        print("\nDiscovering ESPHome media players...")
+        players = discover_esphome_players()
+        
+        if not players:
+            print("⚠ No ESPHome media players found")
+            print("Waiting for ESPHome devices to become available...")
+            print("The service will keep running and check periodically.")
+            print("You can check logs at any time to see the status.")
+            # Keep running and check every 60 seconds
+            while True:
+                time.sleep(60)
+                print("Checking for ESPHome players...")
+                players = discover_esphome_players()
+                if players:
+                    print(f"\n✓ Found {len(players)} ESPHome media player(s)!")
+                    break
+                else:
+                    print("Still no ESPHome players found, will check again in 60s...")
     
-    # Check for SUPERVISOR_TOKEN
-    if not SUPERVISOR_TOKEN:
-        print("ERROR: SUPERVISOR_TOKEN not found in environment")
-        print("This should be automatically provided by Home Assistant")
+    except Exception as e:
+        print(f"FATAL ERROR in main: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
-    
-    config = load_config()
-    print(f"Configuration loaded: {config}")
-    
-    # Check if ESPHome support is enabled
-    if not config.get('esphome_enabled', False):
-        print("ESPHome support is disabled in configuration")
-        sys.exit(0)
-    
-    # Discover ESPHome players
-    print("Discovering ESPHome media players...")
-    players = discover_esphome_players()
-    
-    if not players:
-        print("⚠ No ESPHome media players found")
-        print("Waiting for ESPHome devices to become available...")
-        print("The service will keep running and check periodically.")
-        # Keep running and check every 60 seconds
-        while True:
-            time.sleep(60)
-            players = discover_esphome_players()
-            if players:
-                print(f"\n✓ Found {len(players)} ESPHome media player(s)!")
-                break
-            else:
-                print("Still no ESPHome players found, checking again in 60s...")
     
     print(f"\nFound {len(players)} ESPHome media player(s)")
     for player in players:
