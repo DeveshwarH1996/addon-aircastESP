@@ -13,9 +13,38 @@ fi
 
 bashio::log.info 'Starting ESPHome AirPlay Bridge (Shairport-Sync)...'
 
+# Basic diagnostics
+if bashio::supervisor.ping; then
+    bashio::log.info 'Supervisor API reachable'
+else
+    bashio::log.warning 'Supervisor API NOT reachable (ping failed)'
+fi
+
+if bashio::var.has_value "${SUPERVISOR_TOKEN}"; then
+    bashio::log.info 'SUPERVISOR_TOKEN present in environment'
+else
+    bashio::log.warning 'SUPERVISOR_TOKEN missing from environment'
+fi
+
+PYTHON_PATH="$(command -v python3 || echo 'python3 not found')"
+bashio::log.info "python3 executable: ${PYTHON_PATH}"
+
 # Start Avahi daemon for mDNS (required for AirPlay discovery)
-bashio::log.info 'Starting Avahi daemon...'
-avahi-daemon --daemonize
+if pgrep -x avahi-daemon >/dev/null 2>&1; then
+    bashio::log.info 'Avahi daemon already running, skipping start'
+else
+    bashio::log.info 'Starting Avahi daemon (mDNS)...'
+    if avahi-daemon --daemonize --no-drop-root --no-chroot; then
+        bashio::log.info 'Avahi daemon started successfully'
+    else
+        AVAHI_STATUS=$?
+        bashio::log.warning "Avahi daemon failed to start (exit code ${AVAHI_STATUS}). Trying debug mode..."
+        avahi-daemon --debug --no-drop-root --no-chroot &
+        AVAHI_DEBUG_PID=$!
+        bashio::log.info "Avahi debug process started with PID ${AVAHI_DEBUG_PID}"
+    fi
+fi
 
 # Run the Shairport-Sync manager for ESPHome devices
+bashio::log.info 'Launching shairport-manager.py...'
 exec /usr/bin/python3 /usr/bin/shairport-manager.py
