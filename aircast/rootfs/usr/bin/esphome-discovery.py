@@ -26,34 +26,61 @@ def discover_esphome_players() -> List[Dict]:
     """
     def fetch_entity_registry_media_players() -> List[str]:
         """Fetch media_player entities backed by the ESPHome integration."""
-        try:
-            response = requests.get(
-                f'{HA_API_URL}/config/entity_registry',
-                headers=get_headers(),
-                timeout=10,
-            )
-            response.raise_for_status()
-            payload = response.json()
-            if isinstance(payload, dict):
-                entries = payload.get('data') or payload.get('entries') or []
-            elif isinstance(payload, list):
-                entries = payload
-            else:
-                entries = []
+        endpoints = (
+            ("POST", f"{HA_API_URL}/config/entity_registry/list", {}),
+            ("GET", f"{HA_API_URL}/config/entity_registry", None),
+        )
 
-            esphome_entities = [
-                entry.get('entity_id')
-                for entry in entries
-                if isinstance(entry, dict)
-                and entry.get('entity_id', '').startswith('media_player.')
-                and entry.get('platform') == 'esphome'
-            ]
+        for method, url, payload in endpoints:
+            try:
+                if method == "POST":
+                    response = requests.post(
+                        url,
+                        headers=get_headers(),
+                        json=payload,
+                        timeout=10,
+                    )
+                else:
+                    response = requests.get(
+                        url,
+                        headers=get_headers(),
+                        timeout=10,
+                    )
 
-            return esphome_entities
-        except requests.exceptions.RequestException as err:
-            print(f"Warning: Failed to query entity registry: {err}", file=sys.stderr)
-        except Exception as err:  # pragma: no cover - defensive
-            print(f"Warning: Unexpected error parsing entity registry: {err}", file=sys.stderr)
+                if response.status_code == 405:
+                    # Method not allowed, try the next approach
+                    continue
+
+                response.raise_for_status()
+                payload_json = response.json()
+
+                if isinstance(payload_json, dict):
+                    entries = (
+                        payload_json.get('data')
+                        or payload_json.get('entries')
+                        or payload_json.get('result', {}).get('data', [])
+                    )
+                elif isinstance(payload_json, list):
+                    entries = payload_json
+                else:
+                    entries = []
+
+                esphome_entities = [
+                    entry.get('entity_id')
+                    for entry in entries
+                    if isinstance(entry, dict)
+                    and entry.get('entity_id', '').startswith('media_player.')
+                    and entry.get('platform') == 'esphome'
+                ]
+
+                if esphome_entities:
+                    return esphome_entities
+
+            except requests.exceptions.RequestException as err:
+                print(f"Warning: Entity registry query failed ({method} {url}): {err}", file=sys.stderr)
+            except Exception as err:  # pragma: no cover - defensive
+                print(f"Warning: Unexpected error parsing entity registry response: {err}", file=sys.stderr)
+
         return []
 
     esphome_registry_entities = set(fetch_entity_registry_media_players())
