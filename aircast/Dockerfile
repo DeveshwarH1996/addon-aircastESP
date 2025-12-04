@@ -28,6 +28,8 @@ RUN \
         libconfig-dev \
         libasound2-dev \
         avahi-daemon \
+        dbus \
+        libnss-mdns \
         libavahi-client-dev \
         libssl-dev \
         libsoxr-dev \
@@ -88,6 +90,8 @@ RUN \
     && apt-mark manual \
         ffmpeg \
         avahi-daemon \
+        dbus \
+        libnss-mdns \
         libasound2-plugins \
         python3 \
         python3-requests \

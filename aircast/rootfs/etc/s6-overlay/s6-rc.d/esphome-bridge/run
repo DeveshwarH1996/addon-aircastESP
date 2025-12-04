@@ -29,6 +29,20 @@ fi
 PYTHON_PATH="$(command -v python3 || echo 'python3 not found')"
 bashio::log.info "python3 executable: ${PYTHON_PATH}"
 
+# Ensure D-Bus is available for Avahi
+if ! pgrep -x dbus-daemon >/dev/null 2>&1; then
+    bashio::log.info 'D-Bus system daemon not running, starting...'
+    mkdir -p /run/dbus
+    if dbus-daemon --system --fork --print-pid >/run/dbus/pid; then
+        DBUS_PID="$(cat /run/dbus/pid)"
+        bashio::log.info "D-Bus daemon started with PID ${DBUS_PID}"
+    else
+        bashio::log.error 'Failed to start D-Bus system daemon'
+    fi
+else
+    bashio::log.info 'D-Bus system daemon already running'
+fi
+
 # Start Avahi daemon for mDNS (required for AirPlay discovery)
 if pgrep -x avahi-daemon >/dev/null 2>&1; then
     bashio::log.info 'Avahi daemon already running, skipping start'
