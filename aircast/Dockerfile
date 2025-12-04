@@ -27,8 +27,6 @@ RUN \
         libpopt-dev \
         libconfig-dev \
         libasound2-dev \
-        avahi-daemon \
-        dbus \
         libnss-mdns \
         libavahi-client-dev \
         libssl-dev \
@@ -89,8 +87,6 @@ RUN \
         libavformat-dev \
     && apt-mark manual \
         ffmpeg \
-        avahi-daemon \
-        dbus \
         libnss-mdns \
         libasound2-plugins \
         python3 \
