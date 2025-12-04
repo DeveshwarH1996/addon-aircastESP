@@ -7,7 +7,9 @@ import os
 import sys
 import json
 import requests
-from typing import List, Dict
+from typing import List, Dict, Any, Optional
+
+EntityRegistryEntry = Dict[str, Any]
 
 SUPERVISOR_TOKEN = os.environ.get('SUPERVISOR_TOKEN')
 HA_API_URL = 'http://supervisor/core/api'
@@ -24,6 +26,26 @@ def discover_esphome_players() -> List[Dict]:
     Discover ESPHome media players via Home Assistant API
     Returns list of media player entities
     """
+    entity_registry_cache: Dict[str, EntityRegistryEntry] = {}
+
+    def normalize_registry_payload(payload_json: Any) -> List[Dict]:
+        """Normalize entity registry payload into a list of entries."""
+        if isinstance(payload_json, list):
+            return payload_json
+        if isinstance(payload_json, dict):
+            data = payload_json.get('data')
+            if isinstance(data, list):
+                return data
+            result = payload_json.get('result')
+            if isinstance(result, dict):
+                result_data = result.get('data')
+                if isinstance(result_data, list):
+                    return result_data
+            entries = payload_json.get('entries')
+            if isinstance(entries, list):
+                return entries
+        return []
+
     def fetch_entity_registry_media_players() -> List[str]:
         """Fetch media_player entities backed by the ESPHome integration."""
         endpoints = (
@@ -53,17 +75,7 @@ def discover_esphome_players() -> List[Dict]:
 
                 response.raise_for_status()
                 payload_json = response.json()
-
-                if isinstance(payload_json, dict):
-                    entries = (
-                        payload_json.get('data')
-                        or payload_json.get('entries')
-                        or payload_json.get('result', {}).get('data', [])
-                    )
-                elif isinstance(payload_json, list):
-                    entries = payload_json
-                else:
-                    entries = []
+                entries = normalize_registry_payload(payload_json)
 
                 esphome_entities = [
                     entry.get('entity_id')
@@ -72,6 +84,10 @@ def discover_esphome_players() -> List[Dict]:
                     and entry.get('entity_id', '').startswith('media_player.')
                     and entry.get('platform') == 'esphome'
                 ]
+
+                for entry in entries:
+                    if isinstance(entry, dict) and entry.get('entity_id'):
+                        entity_registry_cache[entry['entity_id']] = entry
 
                 if esphome_entities:
                     return esphome_entities
@@ -84,6 +100,40 @@ def discover_esphome_players() -> List[Dict]:
         return []
 
     esphome_registry_entities = set(fetch_entity_registry_media_players())
+
+    def fetch_single_registry_entry(entity_id: str) -> Optional[EntityRegistryEntry]:
+        if entity_id in entity_registry_cache:
+            return entity_registry_cache[entity_id]
+
+        try:
+            response = requests.post(
+                f'{HA_API_URL}/config/entity_registry/get',
+                headers=get_headers(),
+                json={'entity_id': entity_id},
+                timeout=10,
+            )
+
+            if response.status_code == 405:
+                response = requests.get(
+                    f'{HA_API_URL}/config/entity_registry/entity/{entity_id}',
+                    headers=get_headers(),
+                    timeout=10,
+                )
+
+            if response.ok:
+                payload_json = response.json()
+                if isinstance(payload_json, dict):
+                    entry: Any = payload_json.get('data') if 'data' in payload_json else payload_json
+                    if isinstance(entry, dict):
+                        entity_registry_cache[entity_id] = entry
+                        return entry
+
+        except requests.exceptions.RequestException as err:
+            print(f"Warning: Failed to get registry entry for {entity_id}: {err}", file=sys.stderr)
+        except Exception as err:  # pragma: no cover - defensive
+            print(f"Warning: Unexpected error retrieving registry entry for {entity_id}: {err}", file=sys.stderr)
+
+        return None
 
     try:
         # Get all states
@@ -106,12 +156,15 @@ def discover_esphome_players() -> List[Dict]:
                 continue
 
             attribution = attributes.get('attribution')
+            registry_entry = fetch_single_registry_entry(entity_id)
+            platform = registry_entry.get('platform') if isinstance(registry_entry, dict) else None
             if (
                 attribution == 'ESPHome'
                 or entity_id in esphome_registry_entities
                 or attributes.get('platform') == 'esphome'
+                or platform == 'esphome'
             ):
-                
+
                 esphome_players.append({
                     'entity_id': entity_id,
                     'friendly_name': attributes.get('friendly_name', entity_id),
