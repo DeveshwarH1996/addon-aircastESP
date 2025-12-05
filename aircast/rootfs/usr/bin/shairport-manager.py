@@ -203,6 +203,12 @@ def main():
         
         config = load_config()
         print(f"✓ Configuration loaded: {config}")
+
+        entity_filter = {
+            entity.strip().lower()
+            for entity in config.get('esphome_entities', [])
+            if isinstance(entity, str) and entity.strip()
+        }
         
         # Check if ESPHome support is enabled
         if not config.get('esphome_enabled', False):
@@ -214,6 +220,20 @@ def main():
         # Discover ESPHome players
         print("\nDiscovering ESPHome media players...")
         players = discover_esphome_players()
+
+        if entity_filter:
+            players = [
+                player
+                for player in players
+                if player.get('entity_id', '').lower() in entity_filter
+            ]
+            if players:
+                print(
+                    "✓ Filtered to configured ESPHome entities: "
+                    + ", ".join(player['entity_id'] for player in players)
+                )
+            else:
+                print("⚠ Configured ESPHome entities not found yet")
         
         if not players:
             print("⚠ No ESPHome media players found")
@@ -225,6 +245,12 @@ def main():
                 time.sleep(60)
                 print("Checking for ESPHome players...")
                 players = discover_esphome_players()
+                if entity_filter:
+                    players = [
+                        player
+                        for player in players
+                        if player.get('entity_id', '').lower() in entity_filter
+                    ]
                 if players:
                     print(f"\n✓ Found {len(players)} ESPHome media player(s)!")
                     break

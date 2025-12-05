@@ -19,6 +19,7 @@ options:
   latency_http: 0
   drift: false
   esphome_enabled: false
+  esphome_entities: []
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)?
   address: str?
@@ -26,3 +27,5 @@ schema:
   latency_http: int?
   drift: bool?
   esphome_enabled: bool?
+  esphome_entities:
+    - str?

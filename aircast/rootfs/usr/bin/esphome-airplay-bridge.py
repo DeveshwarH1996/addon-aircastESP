@@ -197,6 +197,12 @@ def main():
         sys.exit(0)
     
     # Discover ESPHome players
+    entity_filter = {
+        entity.strip().lower()
+        for entity in config.get('esphome_entities', [])
+        if isinstance(entity, str) and entity.strip()
+    }
+
     try:
         result = subprocess.run(
             ['/usr/bin/esphome-discovery.py'],
@@ -205,12 +211,21 @@ def main():
             check=True
         )
         players = json.loads(result.stdout.split('\n')[-1])
+        if entity_filter:
+            players = [
+                player
+                for player in players
+                if player.get('entity_id', '').lower() in entity_filter
+            ]
     except Exception as e:
         print(f"Error discovering ESPHome players: {e}", file=sys.stderr)
         sys.exit(1)
     
     if not players:
-        print("No ESPHome media players found")
+        if entity_filter:
+            print("No configured ESPHome media players found")
+        else:
+            print("No ESPHome media players found")
         sys.exit(1)
     
     # Start bridge

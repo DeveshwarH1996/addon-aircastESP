@@ -27,6 +27,7 @@ def discover_esphome_players() -> List[Dict]:
     Returns list of media player entities
     """
     entity_registry_cache: Dict[str, EntityRegistryEntry] = {}
+    diagnostics_cache: Dict[str, List[Dict[str, Any]]] = {}
 
     def normalize_registry_payload(payload_json: Any) -> List[Dict]:
         """Normalize entity registry payload into a list of entries."""
@@ -101,6 +102,52 @@ def discover_esphome_players() -> List[Dict]:
 
     esphome_registry_entities = set(fetch_entity_registry_media_players())
 
+    def fetch_esphome_supported_formats(config_entry_id: Optional[str]) -> List[Dict[str, Any]]:
+        """Retrieve ESPHome supported audio formats via HA diagnostics endpoint."""
+        if not config_entry_id:
+            return []
+
+        if config_entry_id in diagnostics_cache:
+            return diagnostics_cache[config_entry_id]
+
+        url = f"{HA_API_URL}/diagnostics/config_entry/{config_entry_id}"
+        try:
+            response = requests.get(
+                url,
+                headers=get_headers(),
+                timeout=10,
+            )
+            if response.status_code == 404:
+                # Diagnostics not available for this entry.
+                diagnostics_cache[config_entry_id] = []
+                return []
+
+            response.raise_for_status()
+            payload = response.json()
+            data = payload.get('data') if isinstance(payload, dict) else None
+            storage = data.get('storage_data') if isinstance(data, dict) else None
+            media_players = storage.get('media_player') if isinstance(storage, dict) else None
+
+            supported_formats: List[Dict[str, Any]] = []
+            if isinstance(media_players, list):
+                for media_player in media_players:
+                    formats = media_player.get('supported_formats') if isinstance(media_player, dict) else None
+                    if isinstance(formats, list):
+                        for fmt in formats:
+                            if isinstance(fmt, dict):
+                                supported_formats.append(fmt)
+
+            diagnostics_cache[config_entry_id] = supported_formats
+            return supported_formats
+
+        except requests.exceptions.RequestException as err:
+            print(f"Warning: Failed to fetch diagnostics for {config_entry_id}: {err}", file=sys.stderr)
+        except Exception as err:  # pragma: no cover - defensive
+            print(f"Warning: Unexpected diagnostics error for {config_entry_id}: {err}", file=sys.stderr)
+
+        diagnostics_cache[config_entry_id] = []
+        return []
+
     def fetch_single_registry_entry(entity_id: str) -> Optional[EntityRegistryEntry]:
         if entity_id in entity_registry_cache:
             return entity_registry_cache[entity_id]
@@ -158,6 +205,11 @@ def discover_esphome_players() -> List[Dict]:
             attribution = attributes.get('attribution')
             registry_entry = fetch_single_registry_entry(entity_id)
             platform = registry_entry.get('platform') if isinstance(registry_entry, dict) else None
+            config_entry_id = (
+                registry_entry.get('config_entry_id')
+                if isinstance(registry_entry, dict)
+                else None
+            )
             if (
                 attribution == 'ESPHome'
                 or entity_id in esphome_registry_entities
@@ -165,11 +217,15 @@ def discover_esphome_players() -> List[Dict]:
                 or platform == 'esphome'
             ):
 
+                supported_formats = fetch_esphome_supported_formats(config_entry_id)
+
                 esphome_players.append({
                     'entity_id': entity_id,
                     'friendly_name': attributes.get('friendly_name', entity_id),
                     'state': entity.get('state'),
-                    'supported_features': attributes.get('supported_features', 0)
+                    'supported_features': attributes.get('supported_features', 0),
+                    'config_entry_id': config_entry_id,
+                    'esphome_supported_formats': supported_formats,
                 })
         
         return esphome_players
